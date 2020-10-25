@@ -128,11 +128,14 @@ local	breserved:byte
 @@:
 	add bx,2
 	mov si,[bx]
+	.if !si
+		jmp error
+	.endif
 	mov ax,[si]
 	.if ((al == '-') || (al == '/'))
 		call getoption
 		jc error
-		add bx,2
+		jmp @B
 	.endif
 
 ;--- get source parameters
@@ -223,13 +226,18 @@ local	breserved:byte
 			invoke printf, CStr(<"XMS get handle info failed for %X, error=%X",lf>), handle1, bx
 			jmp exit
 		.endif
-		shl edx,10
+		.if edx & 0FFC00000h
+			invoke printf, CStr(<"warning: handle %X size exceeds 4 GB",lf>), handle1
+			mov edx,0fffffffeh
+		.else
+			shl edx,10
+		.endif
 		mov eax, dwOfs1
 		cmp edx, eax	;handle size < offset?
 		jc sizerr1
 		mov xmsm.dwOfsSrc, eax
 		sub edx, eax	;max remaining size
-		.if edx < dwSiz1
+		.if dwSiz1 == -1
 			mov dwSiz1, edx
 		.endif
 		mov ax,handle1
@@ -263,7 +271,12 @@ local	breserved:byte
 			invoke printf, CStr(<"XMS get handle info failed for %X, error=%X",lf>), handle2, bx
 			jmp exit
 		.endif
-		shl edx,10
+		.if edx & 0FFC00000h
+			invoke printf, CStr(<"warning: handle %X size exceeds 4 GB",lf>), handle2
+			mov edx,0fffffffeh
+		.else
+			shl edx,10
+		.endif
 		mov eax, dwOfs2
 		cmp edx, eax	;handle size < offset?
 		jc sizerr2
@@ -316,22 +329,26 @@ local	breserved:byte
 		mov xmsm.dwOfsDst,eax
 	.endif
 
-	.if (bTime)
+	.if bTime
 		call gettimer
 		mov dwTimeStart,eax
 	.endif
 
 	xor edi, edi
 	.while edi < dwSiz1 && edi < dwSiz2
-		mov xmsm.dwSize, sizeof buffer
+		.if handle1 && handle2
+			mov xmsm.dwSize,-1
+		.else
+			mov xmsm.dwSize, sizeof buffer
+		.endif
 		mov edx, dwSiz1
 		sub edx, edi
 		mov eax, dwSiz2
 		sub eax, edi
-		.if (edx < sizeof buffer)
+		.if edx < xmsm.dwSize
 			mov xmsm.dwSize, edx
 		.endif
-		.if (eax < xmsm.dwSize)
+		.if eax < xmsm.dwSize
 			mov xmsm.dwSize, eax
 		.endif
 		.if hFile1 != -1
@@ -341,6 +358,8 @@ local	breserved:byte
 			mov ah, 3Fh
 			int 21h
 			jc readerr
+			add ax,1		;make size even to avoid XMS block move error
+			and al,0feh
 			movzx eax, ax
 			mov xmsm.dwSize, eax
 		.endif
@@ -350,14 +369,16 @@ local	breserved:byte
 			call xmsadr
 			.if (ax!=1)
 				movzx ax,bl
-				invoke printf, CStr(<"XMS error moving extended memory block [BL=%X]",lf>),ax
+				invoke printf, CStr(<"XMS block move error [BL=%X]. EMMS.len=%lu EMMS.src=%X:%lX EMMS.dst=%X:%lX",lf>),
+					ax, xmsm.dwSize, xmsm.wSrc, xmsm.dwOfsSrc, xmsm.wDst, xmsm.dwOfsDst
 				.break
 			.endif
+			mov eax, xmsm.dwSize
 			.if handle1
-				add xmsm.dwOfsSrc, sizeof buffer
+				add xmsm.dwOfsSrc, eax
 			.endif
 			.if handle2
-				add xmsm.dwOfsDst, sizeof buffer
+				add xmsm.dwOfsDst, eax
 			.endif
 		.endif
 		.if hFile2 != -1
@@ -372,9 +393,7 @@ local	breserved:byte
 				.break
 			.endif
 		.endif
-		mov eax, xmsm.dwSize
-		add edi, eax
-		.break .if eax != sizeof buffer
+		add edi, xmsm.dwSize
 	.endw
 
 	.if hFile2 != -1
@@ -392,11 +411,17 @@ local	breserved:byte
 
 	call closefiles
 
-	.if edi >= 100000h
+	.if edi >= 10000h
+		mov ax,di
 		shr edi,10
-		invoke printf, CStr(<"%lu kB written",lf>), edi
+		and ax,3ffh
+		.if ZERO?
+			invoke printf, CStr(<"%lu kB written",lf>), edi
+		.else
+			invoke printf, CStr(<"%lu kB and %u bytes written",lf>), edi, ax
+		.endif
 	.else
-		invoke printf, CStr(<"%lu bytes written",lf>), edi
+		invoke printf, CStr(<"%u bytes written",lf>), di
 	.endif
 	mov al,0
 	jmp exit
