@@ -24,15 +24,18 @@ endm
 
 XMSMOVE struct
 dwSize	dd ?
-wSrc	dw ?
+hSrc	dw ?
 dwOfsSrc dd ?
-wDst	dw ?
+hDst	dw ?
 dwOfsDst dd ?
 XMSMOVE ends
 
+_BSS segment para public 'BSS'	;make sure bss is para aligned
+_BSS ends
+
 	.data?
 
-buffer	db 4000h dup (?)
+buffer	db 8000h dup (?)
 
 	.code
 
@@ -83,30 +86,28 @@ main proc c argc:word,argv:ptr ptr
 local	xmsadr:dword
 local	xmsm:XMSMOVE
 local	dwTimeStart:dword
-local	handle1:word
-local	handle2:word
 local	hFile1:word
 local	hFile2:word
 local	pszFile1:word
 local	pszFile2:word
 local	dwOfs1:dword
 local	dwOfs2:dword
-local	dwSiz1:dword
-local	dwSiz2:dword
+local	dwSizSrc:dword
 local	bAskOverwrite:byte
 local	bTime:byte
-local	breserved:byte
+local	bVerbose:byte
 
-	mov dwOfs1,0
-	mov dwOfs2,0
-	mov dwSiz1,-1
-	mov dwSiz2,-1
+	mov xmsm.hSrc, 0
+	mov xmsm.hDst, 0
 	mov hFile1, -1
 	mov hFile2, -1
-	mov handle1, 0
-	mov handle2, 0
+	mov dwOfs1,0
+	mov dwOfs2,0
+	mov dwSizSrc,-1
 	mov bAskOverwrite,1
 	mov bTime,0
+	mov bVerbose,0
+
 	mov ax,4300h
 	int 2Fh
 	cmp al,80h
@@ -151,7 +152,7 @@ local	breserved:byte
 		jc numtoobig
 		cmp ch,0
 		jz error3
-		mov handle1,ax
+		mov xmsm.hSrc,ax
 		mov si,dx
 	.else
 		.while byte ptr [si] && byte ptr [si] != ','
@@ -172,7 +173,7 @@ local	breserved:byte
 			invoke gethex, si
 			jc numtoobig
 			.if (ch)
-				mov dwSiz1, eax
+				mov dwSizSrc, eax
 			.endif
 			mov si,dx
 		.endif
@@ -193,7 +194,7 @@ local	breserved:byte
 		jc numtoobig
 		cmp ch,0
 		jz error3
-		mov handle2,ax
+		mov xmsm.hDst,ax
 		mov si,dx
 	.else
 		.while byte ptr [si] && byte ptr [si] != ','
@@ -217,36 +218,52 @@ local	breserved:byte
 		jmp error
 	.endif
 
-	mov dx,handle1
+	mov dx,xmsm.hSrc
 	.if dx 
 		mov ah,8Eh				;get handle info (size in kB in edx)
 		call xmsadr
 		.if ax==0
 			movzx bx,bl
-			invoke printf, CStr(<"XMS get handle info failed for %X, error=%X",lf>), handle1, bx
+			invoke printf, CStr(<"XMS get handle info failed for %X, error=%X",lf>), xmsm.hSrc, bx
 			jmp exit
 		.endif
+		mov eax, dwOfs1
+		mov xmsm.dwOfsSrc, eax
 		.if edx & 0FFC00000h
-			invoke printf, CStr(<"warning: handle %X size exceeds 4 GB",lf>), handle1
-			mov edx,0fffffffeh
+			invoke printf, CStr(<"warning: src handle %X size >= 4 GB",lf>), xmsm.hSrc
+			mov eax, dwOfs1
+			mov edx, 0
+			sub edx,eax
+			.if !edx
+				mov edx,-2
+			.endif
 		.else
 			shl edx,10
+			cmp edx, eax	;handle size < offset?
+			jc sizerr1
+			sub edx, eax	;max remaining size
 		.endif
-		mov eax, dwOfs1
-		cmp edx, eax	;handle size < offset?
-		jc sizerr1
-		mov xmsm.dwOfsSrc, eax
-		sub edx, eax	;max remaining size
-		.if dwSiz1 == -1
-			mov dwSiz1, edx
+		.if dwSizSrc == -1
+			mov dwSizSrc, edx
 		.endif
-		mov ax,handle1
-		mov xmsm.wSrc, ax
 	.else
-		mov dx, pszFile1
-		mov ax,3D00h
+;------------------------ open source
+
+		mov si, pszFile1
+		mov cx,0			;normal file
+		mov di,0
+		mov dl,1h			;fail if file not exists
+		mov dh,0
+		mov bx,0			;read
+		mov ax,716Ch		;open
+		int 21h
+		jnc @F
+		cmp ax,7100h
+		jnz openerr
+		mov ax,6C00h
 		int 21h
 		jc openerr
+@@:
 		mov hFile1, ax
 		.if (dwOfs1)
 			mov dx,word ptr dwOfs1+0
@@ -255,36 +272,16 @@ local	breserved:byte
 			mov ax,4200h
 			int 21h
 		.endif
-		mov xmsm.wSrc,0
 		mov ax,ds
 		shl eax,16
 		mov ax,offset buffer
 		mov xmsm.dwOfsSrc,eax
 	.endif
 
-	mov dx,handle2
+	mov dx,xmsm.hDst
 	.if dx 
-		mov ah,8Eh				;get handle info (size in EDX in kB)
-		call xmsadr
-		.if ax==0
-			movzx bx,bl
-			invoke printf, CStr(<"XMS get handle info failed for %X, error=%X",lf>), handle2, bx
-			jmp exit
-		.endif
-		.if edx & 0FFC00000h
-			invoke printf, CStr(<"warning: handle %X size exceeds 4 GB",lf>), handle2
-			mov edx,0fffffffeh
-		.else
-			shl edx,10
-		.endif
 		mov eax, dwOfs2
-		cmp edx, eax	;handle size < offset?
-		jc sizerr2
 		mov xmsm.dwOfsDst, eax
-		sub edx, eax	;max remaining size
-		mov dwSiz2, edx
-		mov ax,handle2
-		mov xmsm.wDst, ax
 	.else
 		mov dx, pszFile2
 		mov ax,3D01h
@@ -322,7 +319,6 @@ local	breserved:byte
 			mov ax,4200h
 			int 21h
 		.endif
-		mov xmsm.wDst,0
 		mov ax,ds
 		shl eax,16
 		mov ax,offset buffer
@@ -335,21 +331,16 @@ local	breserved:byte
 	.endif
 
 	xor edi, edi
-	.while edi < dwSiz1 && edi < dwSiz2
-		.if handle1 && handle2
+	.while edi < dwSizSrc
+		.if xmsm.hSrc && xmsm.hDst
 			mov xmsm.dwSize,-1
 		.else
 			mov xmsm.dwSize, sizeof buffer
 		.endif
-		mov edx, dwSiz1
+		mov edx, dwSizSrc
 		sub edx, edi
-		mov eax, dwSiz2
-		sub eax, edi
 		.if edx < xmsm.dwSize
 			mov xmsm.dwSize, edx
-		.endif
-		.if eax < xmsm.dwSize
-			mov xmsm.dwSize, eax
 		.endif
 		.if hFile1 != -1
 			mov dx, offset buffer
@@ -363,21 +354,24 @@ local	breserved:byte
 			movzx eax, ax
 			mov xmsm.dwSize, eax
 		.endif
-		.if handle1 || handle2
+		.if xmsm.hSrc || xmsm.hDst
 			mov ah,0Bh
 			lea si, xmsm
 			call xmsadr
 			.if (ax!=1)
 				movzx ax,bl
 				invoke printf, CStr(<"XMS block move error [BL=%X]. EMMS.len=%lu EMMS.src=%X:%lX EMMS.dst=%X:%lX",lf>),
-					ax, xmsm.dwSize, xmsm.wSrc, xmsm.dwOfsSrc, xmsm.wDst, xmsm.dwOfsDst
+					ax, xmsm.dwSize, xmsm.hSrc, xmsm.dwOfsSrc, xmsm.hDst, xmsm.dwOfsDst
 				.break
+			.elseif bVerbose
+				invoke printf, CStr(<"XMS block move ok, EMMS.len=%lu EMMS.src=%X:%lX EMMS.dst=%X:%lX",lf>),
+					xmsm.dwSize, xmsm.hSrc, xmsm.dwOfsSrc, xmsm.hDst, xmsm.dwOfsDst
 			.endif
 			mov eax, xmsm.dwSize
-			.if handle1
+			.if xmsm.hSrc
 				add xmsm.dwOfsSrc, eax
 			.endif
-			.if handle2
+			.if xmsm.hDst
 				add xmsm.dwOfsDst, eax
 			.endif
 		.endif
@@ -394,6 +388,7 @@ local	breserved:byte
 			.endif
 		.endif
 		add edi, xmsm.dwSize
+		.break .if !xmsm.dwSize
 	.endw
 
 	.if hFile2 != -1
@@ -461,6 +456,7 @@ error:
 	invoke printf, CStr(<"   options are:",lf>)
 	invoke printf, CStr(<"   -n: no user confirmation if file will be overwritten",lf>)
 	invoke printf, CStr(<"   -t: display time needed for copy operation",lf>)
+	invoke printf, CStr(<"   -v: display each block move call",lf>)
 	invoke printf, CStr(<" src & dst: if preceded by a ':' it's meant to be a XMS handle,",lf>)
 	invoke printf, CStr(<"            else it's regarded as a filename.",lf>)
 	invoke printf, CStr(<" XMS handles, offsets and size must be entered as hex values.",lf>)
@@ -488,6 +484,9 @@ getoption:
 		retn
 	.elseif (ah == 't')
 		mov bTime, 1
+		retn
+	.elseif (ah == 'v')
+		mov bVerbose, 1
 		retn
 	.endif
 opterror:
