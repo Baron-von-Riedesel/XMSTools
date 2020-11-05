@@ -140,24 +140,22 @@ formatitem:
 @@:
 	lodsb
 	mov [fmt],si
-	cbw
-	cmp al,'x'
-	je handle_x
-	ja @@L359
 	or al,al
 	je done 	;\0?
-	sub al,'X'
+	cmp al,'x'
 	je handle_x
-	sub al,11
-	je handle_c	;'c'
-	dec al
-	je handle_d	;'d'
-	sub al,5
-	je handle_i	;'i'
-	sub al,10
-	je handle_s	;'s'
-	sub al,2
-	je handle_u	;'u'
+	cmp al,'X'
+	je handle_x
+	cmp al,'c'
+	je handle_c
+	cmp al,'d'
+	je handle_d
+	cmp al,'i'
+	je handle_i
+	cmp al,'s'
+	je handle_s
+	cmp al,'u'
+	je handle_u
 	jmp @@L359
 handle_c:				;'c'
 	mov ax,[di]

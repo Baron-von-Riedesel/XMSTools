@@ -359,6 +359,7 @@ local	bVerbose:byte
 			lea si, xmsm
 			call xmsadr
 			.if (ax!=1)
+				call dispcopytime
 				movzx ax,bl
 				invoke printf, CStr(<"XMS block move error [BL=%X]. EMMS.len=%lu EMMS.src=%X:%lX EMMS.dst=%X:%lX",lf>),
 					ax, xmsm.dwSize, xmsm.hSrc, xmsm.dwOfsSrc, xmsm.hDst, xmsm.dwOfsDst
@@ -398,11 +399,7 @@ local	bVerbose:byte
 		int 21h
 	.endif
 
-	.if (bTime)
-		call gettimer
-		sub eax, dwTimeStart
-		invoke printf, CStr(<"time for copy op: %lu ms",lf>), eax
-	.endif
+	call dispcopytime
 
 	call closefiles
 
@@ -420,11 +417,19 @@ local	bVerbose:byte
 	.endif
 	mov al,0
 	jmp exit
+dispcopytime:
+	.if (bTime)
+		call gettimer
+		sub eax, dwTimeStart
+		invoke printf, CStr(<"time for copy op: %lu ms",lf>), eax
+		mov bTime,0
+	.endif
+	retn
 createrr:
 	invoke printf, CStr(<"file '%s' creation error [%X]",lf>), dx, ax
 	jmp exiterr
 openerr:
-	invoke printf, CStr(<"file '%s' open error [%X]",lf>), dx, ax
+	invoke printf, CStr(<"file '%s' open error [%X]",lf>), si, ax
 	jmp exiterr
 readerr:
 	invoke printf, CStr(<"read error [%X]",lf>), ax

@@ -8,12 +8,12 @@ DELIM MACRO target
     je  target
 ENDM
 
-    .data
+    .data?
 
-__argc dw 0
-__argv dw 0
-_psp   dw 0
-_brk   dw 0
+__argc dw ?
+__argv dw ?
+_psp   dw ?
+_brk   dw ?
 
     .code
 

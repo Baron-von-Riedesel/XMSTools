@@ -123,7 +123,7 @@ local	bSext:byte
 	jnc @F
 error:
 	invoke printf, CStr("usage: XMSALLOC [-x] size (kB to alloc)",lf)
-	invoke printf, CStr("       -x: use super-extended allocation (HimemSX)",lf)
+	invoke printf, CStr("       -x: use super-extended allocation (XMS v3.5)",lf)
 	jmp mainex
 @@:
 	mov edx,eax

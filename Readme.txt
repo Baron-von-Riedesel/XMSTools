@@ -1,5 +1,5 @@
 
-XMSTools are a bunch of little programs to test an extended memory manager (EMM).
+XMSTools are a bunch of little programs to test an eXtended Memory Manager (XMM).
 
 - XMSAlloc will try to allocate an Extended Memory Block (EMB)
 - XMSFree  will try to release an EMB

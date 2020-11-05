@@ -137,7 +137,7 @@ local bSExt:byte
 	jnc @F
 printusage:
 	invoke printf, CStr("usage: XMSLOCK [-x] handle (hexadecimal number)",lf)
-	invoke printf, CStr("       -x: lock super-extended memory block (HimemSX)",lf)
+	invoke printf, CStr("       -x: lock super-extended memory block (XMS v3.5)",lf)
 	jmp exit
 @@:
 	mov dx, ax
