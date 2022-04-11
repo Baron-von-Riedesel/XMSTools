@@ -131,7 +131,7 @@ whitesp endp
 getdez proc stdcall pStr:ptr byte
 	push edx
 	mov ch,00
-	mov edx,0000
+	mov edx,0
 	mov bx,pStr
 getdez2:
 	mov al,[bx]
@@ -145,13 +145,7 @@ getdez2:
 	inc bx
 	jmp getdez2
 getdez1:
-	and ch,ch
-	jz @F
-	call whitesp
-	jz sm1
-@@:
-	stc
-sm1:
+	cmp ch,1
 	mov eax,edx
 	pop edx
 	ret
@@ -180,40 +174,32 @@ ok2:
 	ret
 hextest endp
 
-getwhex proc stdcall pStr:ptr byte
+gethex proc stdcall pStr:ptr byte
 
-	push dx
+	push edx
 	mov ch,00
-	mov dx,0000
+	mov edx,0
 	mov bx,pStr
 nextitem:
 	mov al,[bx]
 	call hextest
 	jc gethex1
 	inc ch
-	mov ah,00
-	push ax
-	mov ax,dx
-	add ax,ax
-	add ax,ax
-	add ax,ax
-	add ax,ax
-	pop dx
-	add ax,dx
-	mov dx,ax
+	test edx,0f0000000h
+	jnz failed
+	movzx eax,al
+	shl edx,4
+	add edx,eax
 	inc bx
 	jmp nextitem
+failed:
+	mov ch,0
 gethex1:
 	cmp ch,1
-	jc @F
-	call whitesp
-	jz @F
-	stc
-@@:
-	mov ax,dx
-	pop dx
+	mov eax,edx
+	pop edx
 	ret
-getwhex endp
+gethex endp
 
 main proc c argv:ptr ptr 
 
@@ -236,14 +222,45 @@ local starttime:dword
 	pop es
 	mov bx,argv
 	call ignws
-	invoke getwhex,bx
+	invoke gethex,bx
 	jc error
+	test eax,0ffff0000h	;handle must be a word.
+	jnz error
 	mov handle,ax
+	mov al,[bx]
+	cmp al,' '
+	jnz error
 	call ignws
+	mov ax,[bx]
+	or ah,20h
+	cmp ax,"x0"
+	jnz @F
+	add bx,2
+	invoke gethex,bx
+	jc error
+	jmp cont
+@@:
 	invoke getdez,bx
 	jc error
-	mov ebx, eax
-
+cont:
+	mov cl,[bx]
+	or cl,20h
+	cmp cl,'g'
+	jz useg
+	cmp cl,'m'
+	jz usem
+	jmp @F
+useg:
+	shl eax,10
+usem:
+	shl eax,10
+	inc bx
+@@:
+	push eax
+	mov al,[bx]
+	call whitesp
+	pop ebx
+	jnz error
 	invoke gettimer
 	mov starttime, eax
 
@@ -265,7 +282,10 @@ local starttime:dword
 	invoke printf, CStr(<"ok, ebx=0x%lX (%lu), time=%lu ms",lf>), ebx, ebx, eax
 	jmp exit
 error:
-	invoke printf, CStr(<"usage: XMSREAL handle (hex number) size (decimal number)",lf>)
+	invoke printf, CStr(<"usage: XMSREAL handle size",lf>)
+	invoke printf, CStr(<"       <handle> must be a valid XMS handle, a 16-bit hexadecimal number.",lf>)
+	invoke printf, CStr(<"       <size> may be entered as decimal or - preceded by '0x' - hexadecimal number.",lf>)
+	invoke printf, CStr(<"       Without suffix, it's interpreted as KB, suffix 'M' or 'G' will change this to MB/GB.",lf>)
 exit:
 	ret
 main endp

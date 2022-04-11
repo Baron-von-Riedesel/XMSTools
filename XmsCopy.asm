@@ -1,5 +1,7 @@
 
 ;--- copy from file|EMB to file|EMB
+;--- files cannot exceed 2 GB
+;--- max size of EMB is 4 GB
 
 	.286
 	.model small
@@ -96,6 +98,7 @@ local	dwSizSrc:dword
 local	bAskOverwrite:byte
 local	bTime:byte
 local	bVerbose:byte
+local	bDisable:byte
 
 	mov xmsm.hSrc, 0
 	mov xmsm.hDst, 0
@@ -107,6 +110,7 @@ local	bVerbose:byte
 	mov bAskOverwrite,1
 	mov bTime,0
 	mov bVerbose,0
+	mov bDisable,0
 
 	mov ax,4300h
 	int 2Fh
@@ -355,9 +359,14 @@ local	bVerbose:byte
 			mov xmsm.dwSize, eax
 		.endif
 		.if xmsm.hSrc || xmsm.hDst
+			pushf
+			.if bDisable
+				cli
+			.endif
 			mov ah,0Bh
 			lea si, xmsm
 			call xmsadr
+			popf
 			.if (ax!=1)
 				call dispcopytime
 				movzx ax,bl
@@ -459,6 +468,7 @@ error:
 	invoke printf, CStr(<"XMSCOPY v1.1 Public Domain (written by Japheth)",lf>)
 	invoke printf, CStr(<"usage: XMSCOPY [options] src[,offset][,size] dst[,offset]",lf>)
 	invoke printf, CStr(<"   options are:",lf>)
+	invoke printf, CStr(<"   -d: disable interrupts during copy operation",lf>)
 	invoke printf, CStr(<"   -n: no user confirmation if file will be overwritten",lf>)
 	invoke printf, CStr(<"   -t: display time needed for copy operation",lf>)
 	invoke printf, CStr(<"   -v: display each block move call",lf>)
@@ -492,6 +502,9 @@ getoption:
 		retn
 	.elseif (ah == 'v')
 		mov bVerbose, 1
+		retn
+	.elseif (ah == 'd')
+		mov bDisable, 1
 		retn
 	.endif
 opterror:

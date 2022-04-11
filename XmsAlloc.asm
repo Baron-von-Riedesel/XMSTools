@@ -37,54 +37,99 @@ done:
 	ret
 ignws endp
 
-;*** test for valid decimal number
+;*** test for valid decimal digit
 
-deztest proc near
+dectest proc near
 	cmp al,'0'
-	jc deztst1
+	jc dectst1
 	cmp al,'9' + 1
-	jnc deztst1
+	jnc dectst1
 	sub al,'0'
 	and al,al
 	ret
-deztst1:stc
+dectst1:
+	stc
 	ret
-deztest endp
+dectest endp
 
-;*** out: number in EAX
+;*** test for valid hex digit
+
+hextest proc near
+	cmp al,'0'
+	jc hextst1
+	cmp al,'9'
+	jbe @F
+	or al,20h
+	cmp al,'a'
+	jb hextst1
+	cmp al,'f'
+	ja hextst1
+	sub al,'a'-10
+	ret
+@@:
+	sub al,'0'
+	ret
+hextst1:
+	stc
+	ret
+hextest endp
+
+;--- in: bx->string
+;--- out: number in EAX
+;--- out: bx->behind number
 ;--- digits in CH
 
-getdez proc stdcall pStr:ptr byte
+getdec proc
 	push edx
 	mov ch,0
 	mov edx,0
-	mov bx,pStr
-getdez2:mov al,[bx]
-	call deztest
-	jc getdez1
+nextdigit:
+	mov al,[bx]
+	call dectest
+	jc done
 	inc ch
 	movzx eax,al
 	shl edx, 1
 	lea edx, [edx*4+edx]
 	add edx, eax
 	inc bx
-	jmp getdez2
-getdez1:
-	and ch,ch
-	jz @F
-	cmp al,0
-	jz sm1
-	cmp al,9
-	jz sm1
-	cmp al,' '
-	jz sm1
-@@:
-	stc
-sm1:
+	jmp nextdigit
+done:
+	cmp ch,1
 	mov eax,edx
 	pop edx
 	ret
-getdez endp
+getdec endp
+
+;--- in: bx->string
+;--- out: number in EAX
+;--- out: bx->behind number
+;--- digits in CH
+
+gethex proc
+	push edx
+	mov ch,0
+	mov edx,0
+nextdigit:
+	mov al,[bx]
+	call hextest
+	jc done
+	inc ch
+	movzx eax,al
+	test edx,0f0000000h
+	jnz error
+	shl edx, 4
+	add edx, eax
+	inc bx
+	jmp nextdigit
+error:
+	mov ch,0
+done:
+	cmp ch,1
+	mov eax,edx
+	pop edx
+	ret
+gethex endp
 
 main proc c argv:ptr ptr
 
@@ -119,13 +164,31 @@ local	bSext:byte
 	inc bx
 	call ignws
 @@:
-	invoke getdez,bx
-	jnc @F
-error:
-	invoke printf, CStr("usage: XMSALLOC [-x] size (kB to alloc)",lf)
-	invoke printf, CStr("       -x: use super-extended allocation (XMS v3.5)",lf)
-	jmp mainex
+	mov ax,[bx]
+	or ah,20h
+	cmp ax,"x0"
+	jnz @F
+	add bx,2
+	call gethex
+	jc error
+	jmp cont
 @@:
+	call getdec
+	jc error
+cont:
+	mov cl,[bx]
+	or cl,20h
+	cmp cl,'g'
+	jz useg
+	cmp cl,'m'
+	jz usem
+	jmp @F
+useg:
+	shl eax,10
+usem:
+	shl eax,10
+@@:
+	mov bl,-1
 	mov edx,eax
 	mov ah,0C9h
 	cmp bSext,1
@@ -137,14 +200,22 @@ error:
 @@:
 	call xmsadr
 	cmp ax,1
-	jz @F
 	movzx ax,bl
-	invoke printf, CStr("alloc failed, bl=%X",lf),ax
+	jz @F
+	invoke printf, CStr("alloc failed, bl=%X, dx=%X",lf),ax,dx
 	jmp mainex
 @@:
-	invoke printf, CStr("handle %X",lf),dx
+	invoke printf, CStr("handle %X, bl=%X",lf),dx,ax
 mainex:
 	ret
+error:
+	invoke printf, CStr("usage: XMSALLOC [-x] size",lf)
+	invoke printf, CStr("       <size> may be a decimal or, if preceded by '0x', hexadecimal number.",lf)
+	invoke printf, CStr("       Without suffix, <size> will be interpreted as KB to be allocated.",lf)
+	invoke printf, CStr("       It may be succeeded by a 'M' or 'G' to alloc MBs or GBs instead.",lf)
+	invoke printf, CStr("       -x: use super-extended allocation (XMS v3.5)",lf)
+	jmp mainex
+
 main endp
 
 setargv proc
