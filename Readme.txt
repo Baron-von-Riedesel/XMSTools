@@ -10,6 +10,7 @@ XMSTools are a bunch of little programs to test an eXtended Memory Manager (XMM)
 - XMSInfo  will display size and lock count of an EMB
 - XMSUmb   may allocate/free an Upper Memory Block (UMB)
 - XMSHma   may allocate/free the High Memory Area (HMA)
+- XMSRes   allocates EMBs until a given amount is still free
 
 All these tools are Public Domain.
 

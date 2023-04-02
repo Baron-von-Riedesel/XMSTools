@@ -279,7 +279,7 @@ usem:
 @@:
 	call gettimer
 	sub eax,starttime
-	invoke printf, CStr(<"ok, ebx=0x%lX (%lu), time=%lu ms",lf>), ebx, ebx, eax
+	invoke printf, CStr(<"ok, returned ebx=0x%lX (%lu), time=%lu ms",lf>), ebx, ebx, eax
 	jmp exit
 error:
 	invoke printf, CStr(<"usage: XMSREAL handle size",lf>)
